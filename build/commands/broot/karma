@@ -1,0 +1,31 @@
+#!/usr/bin/env python2.7
+
+import sys
+import os
+
+import common
+
+from osbuild import config
+from osbuild import run
+
+common.setup()
+
+karma_args = " ".join(sys.argv[1:])
+
+if "SUGAR_TEST_LOG" in os.environ:
+    watch_log = None
+else:
+    watch_log = os.path.join(common.logs_dir, "karma.log")
+
+    try:
+        os.unlink(watch_log)
+    except OSError:
+        pass
+
+    os.environ["SUGAR_TEST_LOG"] = watch_log
+    common.print_close_message()
+
+os.environ["SUGAR_RUN_TEST"] = "/usr/bin/karma --browsers %s %s" % \
+    (os.path.join(config.bin_dir, "sugar-web-test"), karma_args)
+
+run.run("sugar-runner", watch_log=watch_log)

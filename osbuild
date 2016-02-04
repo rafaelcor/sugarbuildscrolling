@@ -1,0 +1,504 @@
+#!/usr/bin/env python2.7
+# Copyright 2013 Daniel Narvaez
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import argparse
+import fcntl
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import urllib2
+import StringIO
+
+base_dir = os.path.dirname(os.path.abspath(__file__))
+virtualenv_version = "1.11.4"
+broot_dir = "build"
+commands_dir = os.path.join("build", "commands")
+main_repo = "sugarlabs/sugar-build"
+docs_url = "http://developer.sugarlabs.org/dev-environment.md.html"
+buildbot_env = "SUGAR_BUILDBOT"
+lock_file = None
+
+MODE_NONE = 1
+MODE_HOST = 2
+MODE_BROOT = 3
+
+_mode = None
+_prefs = None
+
+
+def get_mode():
+    global _mode
+
+    if _mode is not None:
+        return _mode
+
+    use_broot = get_prefs().get("use_broot")
+    if use_broot is None:
+        if os.path.isfile('/etc/fedora-release'):
+            use_broot = False
+        else:
+            use_broot = True
+
+    if not use_broot:
+        _mode = MODE_NONE
+    elif "BROOT" in os.environ:
+        _mode = MODE_BROOT
+    else:
+        _mode = MODE_HOST
+
+    return _mode
+
+
+def get_name_for_mode(base, mode=None):
+    if mode is None:
+        mode = get_mode()
+
+    if mode == MODE_NONE:
+        return base
+    elif mode == MODE_HOST:
+        return "%s-%s" % (base, "host")
+    elif mode == MODE_BROOT:
+        return "%s-%s" % (base, "broot")
+
+
+def get_lock_file_path(mode=None):
+    return os.path.join(get_base_dir(), get_name_for_mode(".lock", mode))
+
+
+def get_lock_file(mode=None):
+    global lock_file
+
+    if lock_file is not None:
+        return lock_file
+
+    lock_file = open(get_lock_file_path(), "w")
+
+    return lock_file
+
+
+def get_base_dir():
+    return base_dir
+
+
+def get_broot_dir():
+    return os.path.join(get_base_dir(), broot_dir)
+
+
+def get_sandbox_dir(mode=None):
+    return os.path.join(get_base_dir(), "build", "out",
+                        get_name_for_mode("sandbox", mode))
+
+
+def get_commands_dir(commands_group=None):
+    if commands_group is None:
+        return os.path.join(get_base_dir(), commands_dir)
+    else:
+        return os.path.join(get_base_dir(), commands_dir, commands_group)
+
+
+def get_cache_dir():
+    return os.path.join(get_sandbox_dir(), "cache")
+
+
+def get_virtualenv_dir(mode=None):
+    return os.path.join(get_sandbox_dir(mode=mode), "install")
+
+
+def get_log_dir():
+    return os.path.join(get_base_dir(), "build", "logs")
+
+
+def get_prefs_path():
+    return os.path.join(get_base_dir(), "prefs.json")
+
+
+def get_prefs():
+    global _prefs
+
+    if _prefs is not None:
+        return _prefs
+
+    try:
+        with open(get_prefs_path()) as f:
+            _prefs = json.load(f)
+    except IOError:
+        _prefs = {}
+
+    return _prefs
+
+
+def get_bin_path(name=None):
+    bin_path = os.path.join(get_virtualenv_dir(), "bin")
+
+    if name is None:
+        return bin_path
+    else:
+        return os.path.join(bin_path, name)
+
+
+def create_virtualenv():
+    source_dir = os.path.join(get_cache_dir(),
+                              "virtualenv-%s" % virtualenv_version)
+
+    if not os.path.exists(source_dir):
+        url = "https://pypi.python.org/packages/source/v/" \
+              "virtualenv/virtualenv-%s.tar.gz" % virtualenv_version
+
+        f = urllib2.urlopen(url)
+        buffer = StringIO.StringIO(f.read())
+        with tarfile.open(fileobj=buffer, mode="r:gz") as tar:
+            tar.extractall(get_cache_dir())
+
+    subprocess.check_call(["python2.7",
+                           os.path.join(source_dir, "virtualenv.py"),
+                           "-q", "--system-site-packages",
+                           get_virtualenv_dir()])
+
+
+def install_system_deps():
+    if not os.path.isfile('/etc/fedora-release'):
+        print('Refusing to install fedora packages on non-fedora system')
+        return
+
+    with open(os.path.join(get_broot_dir(), "root.json")) as f:
+        broot_config = json.load(f)
+
+    packages = []
+    for group in broot_config.get("packages", {}).values():
+        for package in group:
+            if package not in packages:
+                packages.append(package)
+
+    args = ["sudo", "dnf", "install"]
+    args.extend(packages)
+    subprocess.check_call(args)
+
+
+def install_nodejs_deps():
+    with open(os.path.join(get_broot_dir(), "root.json")) as f:
+        broot_config = json.load(f)
+    packages = broot_config.get("npm_packages", {})
+
+    args = ["sudo", "npm", "install", "--global"]
+    args.extend(packages)
+    subprocess.check_call(args)
+
+
+def delete_virtualenv(mode=None):
+    try:
+        shutil.rmtree(get_virtualenv_dir(mode=mode))
+    except OSError:
+        pass
+
+
+def delete_sandbox(mode=None):
+    try:
+        shutil.rmtree(get_sandbox_dir(mode=mode))
+    except OSError:
+        pass
+
+
+def broot_check_output(args):
+    os.chdir(get_broot_dir())
+
+    broot_args = ["sudo", get_bin_path("broot")]
+    broot_args.extend(args)
+
+    return subprocess.check_output(broot_args)
+
+
+def broot_run(args, message_args=None):
+    if "XAUTHORITY" not in os.environ:
+        os.environ["XAUTHORITY"] = os.path.expanduser("~/.Xauthority")
+
+    os.chdir(get_broot_dir())
+
+    broot_args = ["sudo", "env"]
+
+    keep = ["DISPLAY", "XAUTHORITY", "XAUTHLOCALHOSTNAME", "http_proxy",
+            "https_proxy"]
+    for name in keep:
+        if name in os.environ:
+            broot_args.append("%s=%s" % (name, os.environ[name]))
+
+    broot_args.append(get_bin_path("broot"))
+    broot_args.extend(args)
+
+    if message_args is None:
+        message_args = args
+
+    print("\n$ sudo broot %s" % " ".join(message_args))
+
+    return subprocess.call(broot_args) == 0
+
+
+def clean():
+    mode = get_mode()
+
+    try:
+        if mode == MODE_NONE:
+            os.unlink(get_lock_file_path(MODE_NONE))
+        elif mode == MODE_HOST:
+            os.unlink(get_lock_file_path(MODE_HOST))
+            os.unlink(get_lock_file_path(MODE_BROOT))
+    except OSError:
+        pass
+
+    if mode == MODE_NONE:
+        delete_sandbox(MODE_NONE)
+    elif mode == MODE_HOST:
+        delete_sandbox(MODE_HOST)
+        delete_sandbox(MODE_BROOT)
+
+
+def is_buildbot():
+    return buildbot_env in os.environ
+
+
+def get_virtualenv_exists():
+    return os.path.exists(get_virtualenv_dir())
+
+
+def broot_state():
+    return broot_check_output(["state"]).strip()
+
+
+def setup(command):
+    mode = get_mode()
+
+    full_pull = command == "pull" and is_full_pull()
+    build_virtualenv = not get_virtualenv_exists() or full_pull
+
+    if full_pull or build_virtualenv:
+        build_system = {MODE_NONE: "build system",
+                        MODE_HOST: "host build system",
+                        MODE_BROOT: "broot build system"}
+
+        print("\n= Setup the %s =\n" % build_system[mode])
+
+    if full_pull and mode == MODE_NONE:
+        print('* Installing system deps')
+        install_system_deps()
+
+        print('* Installing nodejs deps')
+        install_nodejs_deps()
+
+    if build_virtualenv:
+        delete_virtualenv()
+
+        try:
+            print("* Create the python virtualenv")
+            create_virtualenv()
+
+            print("* Install python packages")
+
+            packages = ["git+https://github.com/sugarlabs/osbuild"]
+            if mode == MODE_HOST:
+                packages.append("git+https://github.com/sugarlabs/broot")
+            else:
+                packages.append("sourcestamp")
+
+            args = [get_bin_path("pip"), "-q", "install"]
+            args.extend(packages)
+            subprocess.check_call(args)
+        except Exception, e:
+            delete_virtualenv()
+            raise e
+
+    if full_pull and not is_buildbot():
+        print("* Pull latest sugar-build")
+
+        os.chdir(get_base_dir())
+        subprocess.check_call(["git", "pull", "--ff-only", "-q"])
+
+    if full_pull and mode != MODE_NONE:
+        print("* Setup the build root")
+        if not broot_run(["setup"]):
+            return False
+
+    # When we run the broot osbuild the virtualenv will be updated
+    if get_mode() == MODE_HOST and command == "pull":
+        delete_virtualenv(MODE_BROOT)
+
+    return True
+
+
+def get_available_commands():
+    available_commands = []
+
+    commands_dirs = [get_commands_dir("broot")]
+
+    if get_mode() in (MODE_HOST, MODE_NONE):
+        commands_dirs.append(get_commands_dir("host"))
+
+    for command_dir in commands_dirs:
+        for command in os.listdir(command_dir):
+            available_commands.append(command)
+
+    return available_commands
+
+
+def print_help():
+    available_commands = get_available_commands()
+    available_commands.remove("shell")
+
+    print("\n= Available commands =\n")
+    print("\n".join(available_commands))
+    print("\nSee also %s" % docs_url)
+
+
+def get_command_path(command, commands_group):
+    command_path = os.path.join(get_commands_dir(commands_group), command)
+    if os.path.exists(command_path):
+        return command_path
+    return None
+
+
+def run_command(command, args):
+    if command == "broot":
+        return broot_run(args)
+
+    command_path = get_command_path(command, "host")
+    if command_path is None:
+        is_broot_command = True
+        command_path = get_command_path(command, "broot")
+    else:
+        is_broot_command = False
+
+    if get_mode() == MODE_HOST and is_broot_command:
+        broot_args = ["run", "/home/broot/sugar-build/osbuild", command]
+        broot_message_args = ["run", "osbuild", command]
+
+        if args:
+            broot_args.extend(args)
+            broot_message_args.extend(args)
+
+        return broot_run(broot_args, broot_message_args)
+    else:
+        command_args = [get_bin_path("python2.7"), command_path]
+        if args:
+            command_args.extend(args)
+
+        os.environ["PYTHONPATH"] = get_commands_dir()
+        os.environ["PATH"] = os.path.expandvars("%s:$PATH" % get_bin_path())
+        os.environ["PYTHONUNBUFFERED"] = "yes"
+
+        return subprocess.call(command_args) == 0
+
+
+def check_lock():
+    try:
+        fcntl.lockf(get_lock_file(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        return False
+
+    return True
+
+
+def check_system_deps():
+    for bin_name in "tar", "xz", "chroot", "uname":
+        found = False
+
+        for bin_path in "/usr/bin", "/usr/sbin", "/bin", "/sbin":
+            if os.path.exists(os.path.join(bin_path, bin_name)):
+                found = True
+
+        if not found:
+            print ("Please install %s" % bin_name)
+
+        return found
+
+
+def is_full_pull():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+
+    pull_parser = subparsers.add_parser("pull")
+    pull_parser.add_argument("module", nargs="?")
+    pull_parser.add_argument("--sources")
+
+    options = parser.parse_args()
+
+    return options.module is None
+
+
+def parse_known_args():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command")
+
+    commands = get_available_commands()
+    commands.append("broot")
+
+    for command in commands:
+        subparser = subparsers.add_parser(command)
+
+        if command == "clean":
+            subparser.add_argument("--broot", action="store_true",
+                                   help="Clean also the build root")
+
+    return parser.parse_known_args()
+
+
+def main():
+    # Unbuffered stdout
+    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
+
+    if os.geteuid() == 0:
+        print("osbuild should not be run as root.")
+        return False
+
+    if not check_lock():
+        print("Another osbuild instance is running.")
+        return False
+
+    if "OSBUILD_SHELL" in os.environ:
+        print("Don't run osbuild inside an osbuild shell, you can just "
+              "run the commands directly.")
+        return False
+
+    if not check_system_deps():
+        return False
+
+    os.environ["PIP_DOWNLOAD_CACHE"] = get_cache_dir()
+
+    options, other_args = parse_known_args()
+
+    if not setup(options.command):
+        return False
+
+    if get_mode() in (MODE_NONE, MODE_BROOT) and options.command == "shell":
+        print_help()
+
+    if not run_command(options.command, other_args):
+        print("\n! Failed to run command %s" % options.command)
+        return False
+
+    if options.command == "clean":
+        if options.broot:
+            if not broot_run(["clean"]):
+                return False
+
+        clean()
+
+    return True
+
+
+if __name__ == "__main__":
+    if not main():
+        sys.exit(1)

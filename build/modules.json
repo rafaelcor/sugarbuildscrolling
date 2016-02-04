@@ -1,0 +1,149 @@
+[
+    {
+        "branch": "sugar-build-v1.13.2",
+        "name": "automake",
+        "repo": "https://github.com/sugarlabs/automake.git",
+        "clean_stamp": 1
+    },
+    {
+        "has_checks": true,
+        "name": "gwebsockets",
+        "repo": "https://github.com/dnarvaez/gwebsockets.git",
+        "clean_stamp": 1
+    },
+    {
+        "docs_dir": "",
+        "docs_extras": [
+            "addHeader",
+            "noFiles"
+        ],
+        "has_docs": true,
+        "name": "sugar-docs",
+        "repo": "https://github.com/sugarlabs/sugar-docs.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "sugar-base",
+        "repo": "https://github.com/sugarlabs/sugar-base.git",
+        "clean_stamp": 1
+    }, 
+    {
+        "name": "sugar-toolkit",
+        "repo": "https://github.com/sugarlabs/sugar-toolkit.git",
+        "clean_stamp": 1
+    },
+    {
+        "dist": true,
+        "has_checks": true,
+        "name": "sugar-toolkit-gtk3",
+        "repo": "https://github.com/sugarlabs/sugar-toolkit-gtk3.git",
+        "clean_stamp": 1
+    },
+    {
+        "dist": true,
+        "has_checks": true,
+        "name": "sugar",
+        "repo": "https://github.com/sugarlabs/sugar.git",
+        "clean_stamp": 1
+    },
+    {
+        "dist": true,
+        "name": "sugar-artwork",
+        "repo": "https://github.com/sugarlabs/sugar-artwork.git",
+        "clean_stamp": 1
+    },
+    {
+        "dist": true,
+        "name": "sugar-datastore",
+        "repo": "https://github.com/sugarlabs/sugar-datastore.git",
+        "clean_stamp": 1
+    },
+    {
+        "dist": true,
+        "has_checks": true,
+        "name": "sugar-runner",
+        "repo": "https://github.com/sugarlabs/sugar-runner.git",
+        "clean_stamp": 1
+    },
+    {
+        "has_docs": true,
+        "has_checks": true,
+        "name": "sugar-web",
+        "repo": "https://github.com/sugarlabs/sugar-web.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "sugar-web-test",
+        "repo": "https://github.com/sugarlabs/sugar-web-test.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "sugar-web-template",
+        "repo": "https://github.com/sugarlabs/sugar-web-template.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "docker",
+        "repo": "https://github.com/sugarlabs/docker.git"
+    },
+    {
+        "name": "browse",
+        "repo": "https://github.com/sugarlabs/browse-activity.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "write",
+        "repo": "https://github.com/godiard/write-activity.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "chat",
+        "repo": "https://github.com/walterbender/chat.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "read",
+        "repo": "https://github.com/godiard/read-activity.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "log",
+        "repo": "https://github.com/ignaciouy/log.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "terminal",
+        "repo": "https://github.com/godiard/terminal-activity.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "pippy",
+        "repo": "https://github.com/walterbender/Pippy.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "imageviewer",
+        "repo": "https://github.com/godiard/imageviewer-activity.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "jukebox",
+        "repo": "https://github.com/godiard/jukebox-activity.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "turtleart",
+        "repo": "https://github.com/walterbender/turtleart.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "clock-web",
+        "repo": "https://github.com/manuq/clock-web.git",
+        "clean_stamp": 1
+    },
+    {
+        "name": "gtd-activity",
+        "repo": "https://github.com/manuq/gtd-activity.git",
+        "clean_stamp": 1
+    }
+]
